@@ -14,15 +14,18 @@ const uint8_t GENTLE_OUTER = 110;   // 1단계: 바깥 바퀴
 const uint8_t GENTLE_INNER = 65;    // 1단계: 안쪽 바퀴
 const uint8_t STRONG_OUTER = 125;   // 2단계: 바깥 바퀴
 const uint8_t STRONG_INNER = 25;    // 2단계: 안쪽 바퀴
-const uint8_t PIVOT_SPEED = 90;     // 3단계: 제자리 회전 속도
+const uint8_t PIVOT_SPEED = 75;     // 3단계: 제자리 회전 속도
 
-// 같은 방향으로 계속 보정하면 시간에 따라 회전을 강화한다.
-const unsigned long STRONG_AFTER_MS = 180;
-const unsigned long PIVOT_AFTER_MS = 450;
+// 한쪽 센서만 반응할 때는 먼저 속도 차이를 키우고, 계속되면 제자리 회전한다.
+// 450ms를 기다리면 코너에서 이미 멀어질 수 있어 짧은 출발값으로 바꿨다.
+const unsigned long STRONG_AFTER_MS = 70;
+const unsigned long PIVOT_AFTER_MS = 160;
+// 양쪽 HIGH는 방향 정보가 없으므로 순간 잡음만 거르고 빠르게 제자리 회전한다.
+const unsigned long BOTH_HIGH_PIVOT_AFTER_MS = 25;
 // 양쪽 센서가 HIGH인 상태가 계속되면 무한 회전하지 않도록 멈춘다.
-const unsigned long BOTH_HIGH_TIMEOUT_MS = 1500;
+const unsigned long BOTH_HIGH_TIMEOUT_MS = 800;
 // 최근 방향 기록이 이 시간보다 오래되면 기본 탐색 방향을 사용한다.
-const unsigned long RECENT_DIRECTION_MS = 700;
+const unsigned long RECENT_DIRECTION_MS = 300;
 const int8_t DEFAULT_SEARCH_DIRECTION = 1; // +1 오른쪽, -1 왼쪽
 const bool ENABLE_PIVOT = true;            // false면 후진 단계 비활성화
 const bool PRINT_SENSOR_STATES = false;     // true면 시리얼 모니터에 0/1 출력
@@ -128,8 +131,14 @@ void cornerRecoveryStep()
     uint8_t inner = GENTLE_INNER;
     uint8_t innerMode = FORWARD;
 
-    if (ENABLE_PIVOT && elapsed >= PIVOT_AFTER_MS) {
+    const bool sustainedBothHigh =
+        bothHighActive &&
+        now - bothHighStartedAt >= BOTH_HIGH_PIVOT_AFTER_MS;
+
+    if (ENABLE_PIVOT &&
+        (elapsed >= PIVOT_AFTER_MS || sustainedBothHigh)) {
         // 3단계: 바깥 바퀴 전진 + 안쪽 바퀴 후진으로 제자리 회전.
+        // 한쪽 센서만 반응하면 160ms 후, 양쪽 HIGH면 25ms 후 실행한다.
         outer = PIVOT_SPEED;
         inner = PIVOT_SPEED;
         innerMode = BACKWARD;
@@ -138,7 +147,7 @@ void cornerRecoveryStep()
         outer = STRONG_OUTER;
         inner = STRONG_INNER;
     }
-    // 180ms 전에는 1단계: 작은 속도 차이로 부드럽게 조향한다.
+    // 70ms 전에는 1단계: 작은 속도 차이로 부드럽게 조향한다.
 
     if (turnDirection > 0)
         drive(outer, FORWARD, inner, innerMode); // 우회전: 오른쪽이 안쪽
