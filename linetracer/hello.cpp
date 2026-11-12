@@ -2,6 +2,11 @@
 // src/main.cpp의 loop()에서 cornerRecoveryStep()을 호출해야 동작한다.
 #include <Arduino.h>
 #include "src/AFMotor/AFMotor.h"
+#include "src/range_sensor.h"
+
+bool RangeSensor::is_renew = false;
+uint16_t RangeSensor::range_ticks = 0;
+uint16_t RangeSensor::distance = 0;
 
 // 기존 main.cpp에서 만든 모터를 공유한다. 여기서 다시 만들지 않는다.
 extern AF_DCMotor motor_l; // 실드 M1: 왼쪽 바퀴
@@ -31,7 +36,7 @@ const bool ENABLE_PIVOT = true;            // false면 후진 단계 비활성�
 const bool PRINT_SENSOR_STATES = false;     // true면 시리얼 모니터에 0/1 출력
 // 역회전 확인용. true로 올리면 센서 제어 대신 양쪽 역회전을 차례로 시험한다.
 // 시험 후 false로 되돌려야 정상적인 라인 추적을 한다.
-const bool TEST_PIVOT_MOTORS = false;
+const bool TEST_PIVOT_MOTORS = true;
 const uint8_t TEST_SPEED = 120;             // 시험 중 바퀴가 잘 보이도록 지정
 
 int8_t turnDirection = 0;             // +1 우회전, -1 좌회전, 0 미결정
