@@ -22,32 +22,11 @@ void setup()
     motor_r.run(RELEASE);
     RangeSensor::begin();
 }
+void cornerRecoveryStep();
 
 void loop()
 {
-    int val1 = digitalRead(A0); // 라인센서1
-    int val2 = digitalRead(A5); // 라인센서2
-
-    if (val1 == 0 && val2 == 0)
-    { // 직진
-        motor_l.run(FORWARD);
-        motor_r.run(FORWARD);
-    }
-    else if (val1 == 0 && val2 == 1)
-    { // 우회전
-        motor_l.run(FORWARD);
-        motor_r.run(RELEASE);
-    }
-    else if (val1 == 1 && val2 == 0)
-    { // 좌회전
-        motor_l.run(RELEASE);
-        motor_r.run(FORWARD);
-    }
-    else if (val1 == 1 && val2 == 1)
-    { // 정지
-        motor_l.run(RELEASE);
-        motor_r.run(RELEASE);
-    }
+    cornerRecoveryStep();
 }
 
 ISR(PCINT0_vect) { RangeSensor::echo_edge_isr(); }
