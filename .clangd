@@ -1,0 +1,16 @@
+CompileFlags:
+  Remove:
+    - -flto*
+    - -fno-fat-lto-objects
+    - -fpermissive
+    - -w
+  Add:
+    - -Wall
+---
+If:
+  PathMatch: .*\.ino
+CompileFlags:
+  Add:
+    - -xc++
+    - -include
+    - Arduino.h

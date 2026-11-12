@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "avr",
+      "displayName": "AVR (Arduino UNO)",
+      "description": "avr-gcc cross build for ATmega328P",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/cmake/avr-toolchain.cmake"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "avr",
+      "displayName": "Build",
+      "configurePreset": "avr"
+    },
+    {
+      "name": "upload",
+      "displayName": "Build + Upload (avrdude)",
+      "configurePreset": "avr",
+      "targets": ["upload"]
+    },
+    {
+      "name": "ide-check",
+      "displayName": "Arduino IDE compatibility check (arduino-cli)",
+      "configurePreset": "avr",
+      "targets": ["ide-check"]
+    }
+  ]
+}

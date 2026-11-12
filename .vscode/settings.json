@@ -1,0 +1,7 @@
+{
+    "clangd.arguments": [
+        "--query-driver=**/arduino/tools/avr-gcc/**/bin/avr-g*",
+        "--header-insertion=never"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled",
+}
