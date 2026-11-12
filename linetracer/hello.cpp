@@ -31,7 +31,7 @@ const bool ENABLE_PIVOT = true;            // false면 후진 단계 비활성�
 const bool PRINT_SENSOR_STATES = false;     // true면 시리얼 모니터에 0/1 출력
 // 역회전 확인용. true로 올리면 센서 제어 대신 양쪽 역회전을 차례로 시험한다.
 // 시험 후 false로 되돌려야 정상적인 라인 추적을 한다.
-const bool TEST_PIVOT_MOTORS = True;
+const bool TEST_PIVOT_MOTORS = false;
 const uint8_t TEST_SPEED = 120;             // 시험 중 바퀴가 잘 보이도록 지정
 
 int8_t turnDirection = 0;             // +1 우회전, -1 좌회전, 0 미결정
@@ -62,21 +62,22 @@ void cornerRecoveryStep()
         // 0~1초: 왼쪽 전진, 오른쪽 후진 = 우회전 방향 제자리 회전.
         // 1~1.5초: 정지.
         // 1.5~2.5초: 왼쪽 후진, 오른쪽 전진 = 좌회전 방향 제자리 회전.
-        // 이후 계속 정지. 센서값이나 코너 타이머는 전혀 사용하지 않는다.
+        // 2.5~3초: 정지한 다음 처음부터 무한 반복한다.
+        // 센서값이나 코너 타이머는 전혀 사용하지 않는다.
         static bool testStarted = false;
         static unsigned long testStartedAt = 0;
         if (!testStarted) {
             testStartedAt = now;
             testStarted = true;
         }
-        const unsigned long testElapsed = now - testStartedAt;
+        const unsigned long testElapsed = (now - testStartedAt) % 3000UL;
         if (testElapsed < 1000)
             drive(TEST_SPEED, FORWARD, TEST_SPEED, BACKWARD);
         else if (testElapsed < 1500)
             drive(0, RELEASE, 0, RELEASE);
         else if (testElapsed < 2500)
             drive(TEST_SPEED, BACKWARD, TEST_SPEED, FORWARD);
-        else
+        else // 2.5~3초 정지 후 다음 반복의 첫 단계로 돌아간다.
             drive(0, RELEASE, 0, RELEASE);
         return;
     }
