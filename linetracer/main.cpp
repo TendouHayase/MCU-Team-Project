@@ -5,7 +5,7 @@
  */
 
 #include "src/AFMotor/AFMotor.h"
-#include "src/range_sensor.h"
+#include "src/range/range_sensor.h"
 
 #include <Arduino.h>
 
@@ -24,9 +24,4 @@ void setup()
 }
 void cornerRecoveryStep();
 
-void loop()
-{
-    cornerRecoveryStep();
-}
-
-ISR(PCINT0_vect) { RangeSensor::echo_edge_isr(); }
+void loop() { cornerRecoveryStep(); }

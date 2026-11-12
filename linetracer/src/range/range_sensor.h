@@ -88,8 +88,6 @@ class RangeSensor
     {
         setup_distance_sensor();
         timer1_init();
-        enable_pcint0();
-        enable_timer1a();
     }
 
     /// mm 거리 반환
@@ -97,7 +95,9 @@ class RangeSensor
     {
         if (!is_renew)
             return {RangeStatus::NOT_CHANGED, distance};
-        distance = calculate_distance(range_ticks);
+        cli();
+        calculate_distance(range_ticks);
+        sei();
         is_renew = false;
         return {RangeStatus::CHANGED, distance};
     }
@@ -106,8 +106,8 @@ class RangeSensor
     {
 
         static uint16_t tick = 0;
-        const int recive_value = (PINB & _BV(RECEIVER));
-        if (recive_value)
+        const int recived_value = (PINB & _BV(RECEIVER));
+        if (recived_value)
             tick = TCNT1;
         else
             RangeSensor::write(TCNT1 - tick);
@@ -153,16 +153,16 @@ class RangeSensor
         PCICR |= _BV(PCIE0);
     }
 
-    static __attribute__((always_inline)) void write(uint16_t value)
+    static void write(uint16_t value)
     {
         range_ticks = value;
         is_renew = true;
     }
 
-    static uint16_t calculate_distance(uint16_t tick)
+    static void calculate_distance(uint16_t tick)
     {
+        distance = TICK_TO_MM.apply(tick);
         is_renew = true;
-        return TICK_TO_MM.apply(tick);
     }
 
     static bool is_renew;
