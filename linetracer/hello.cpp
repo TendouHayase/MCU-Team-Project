@@ -29,6 +29,10 @@ const unsigned long RECENT_DIRECTION_MS = 300;
 const int8_t DEFAULT_SEARCH_DIRECTION = 1; // +1 오른쪽, -1 왼쪽
 const bool ENABLE_PIVOT = true;            // false면 후진 단계 비활성화
 const bool PRINT_SENSOR_STATES = false;     // true면 시리얼 모니터에 0/1 출력
+// 역회전 확인용. true로 올리면 센서 제어 대신 양쪽 역회전을 차례로 시험한다.
+// 시험 후 false로 되돌려야 정상적인 라인 추적을 한다.
+const bool TEST_PIVOT_MOTORS = True;
+const uint8_t TEST_SPEED = 120;             // 시험 중 바퀴가 잘 보이도록 지정
 
 int8_t turnDirection = 0;             // +1 우회전, -1 좌회전, 0 미결정
 unsigned long correctionStartedAt = 0; // 현재 방향 보정을 시작한 시각
@@ -52,6 +56,31 @@ void drive(uint8_t leftSpeed, uint8_t leftMode,
 void cornerRecoveryStep()
 {
     const unsigned long now = millis();
+
+    if (TEST_PIVOT_MOTORS) {
+        // 차체를 들어 바퀴가 바닥에 닿지 않게 한 상태에서 실행한다.
+        // 0~1초: 왼쪽 전진, 오른쪽 후진 = 우회전 방향 제자리 회전.
+        // 1~1.5초: 정지.
+        // 1.5~2.5초: 왼쪽 후진, 오른쪽 전진 = 좌회전 방향 제자리 회전.
+        // 이후 계속 정지. 센서값이나 코너 타이머는 전혀 사용하지 않는다.
+        static bool testStarted = false;
+        static unsigned long testStartedAt = 0;
+        if (!testStarted) {
+            testStartedAt = now;
+            testStarted = true;
+        }
+        const unsigned long testElapsed = now - testStartedAt;
+        if (testElapsed < 1000)
+            drive(TEST_SPEED, FORWARD, TEST_SPEED, BACKWARD);
+        else if (testElapsed < 1500)
+            drive(0, RELEASE, 0, RELEASE);
+        else if (testElapsed < 2500)
+            drive(TEST_SPEED, BACKWARD, TEST_SPEED, FORWARD);
+        else
+            drive(0, RELEASE, 0, RELEASE);
+        return;
+    }
+
     const int left = digitalRead(A0);
     const int right = digitalRead(A5);
 
@@ -142,6 +171,14 @@ void cornerRecoveryStep()
         outer = PIVOT_SPEED;
         inner = PIVOT_SPEED;
         innerMode = BACKWARD;
+        // 시리얼 진단을 켜면 역회전 명령이 실제로 선택됐는지도 확인 가능.
+        if (PRINT_SENSOR_STATES) {
+            static unsigned long lastPivotPrintedAt = 0;
+            if (now - lastPivotPrintedAt >= 200) {
+                lastPivotPrintedAt = now;
+                Serial.println("PIVOT: inner motor BACKWARD");
+            }
+        }
     } else if (elapsed >= STRONG_AFTER_MS) {
         // 2단계: 두 바퀴 모두 전진하면서 속도 차이를 키운다.
         outer = STRONG_OUTER;
