@@ -9,7 +9,7 @@
 
 #include <Arduino.h>
 
-constexpr uint8_t VELOCITY = 230;
+constexpr uint8_t VELOCITY = 100;
 
 AF_DCMotor motor_l(1); // 모터드라이버 L293D  1: M1에 연결,  4: M4에 연결
 AF_DCMotor motor_r(4);
