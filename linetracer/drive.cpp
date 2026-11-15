@@ -15,16 +15,21 @@ constexpr uint8_t LEFT_LINE_PIN = A0;
 constexpr uint8_t RIGHT_LINE_PIN = A5;
 
 // 직진과 코너 회전의 PWM. PWM은 측정 전압이 아닌 0~255 속도 명령이다.
-constexpr uint8_t LINE_STRAIGHT_LEFT_PWM = 150;
-constexpr uint8_t LINE_STRAIGHT_RIGHT_PWM = 150;
+constexpr uint8_t LINE_STRAIGHT_LEFT_PWM = 125;
+constexpr uint8_t LINE_STRAIGHT_RIGHT_PWM = 125;
 constexpr uint8_t LINE_CORNER_PWM = 150;
 
-// 코너 검정선을 빠르게 지나쳐도 놓치지 않도록 처음부터 연속 회전한다.
-// 검정 감지가 8ms 이어지면 코너로 확정한다.
+// 벽 앞 정지 후 PWM 150으로 바퀴가 다시 출발하지 못했던 문제를 위한
+// 재출발 보강. 최초 출발과 코너 주행에는 적용하지 않는다.
+constexpr uint8_t LINE_RESUME_PWM = 200;
+constexpr unsigned long LINE_RESUME_BOOST_MS = 60;
+
+// 베스트 코드의 코너 판정과 회전 시간.
+// 한쪽 검정을 보는 즉시 회전을 시작하고, 20~80ms에는 연속 회전한다.
+constexpr unsigned long LINE_PIVOT_START_MS = 20;
 constexpr unsigned long LINE_PIVOT_END_MS = 80;
-constexpr unsigned long LINE_CORNER_ARM_MS = 8;
-// 검정이 사라진 뒤 추가 회전은 짧게 제한해 선을 지나치지 않게 한다.
-constexpr unsigned long LINE_CORNER_HOLD_MS = 20;
+constexpr unsigned long LINE_CORNER_ARM_MS = 5;
+constexpr unsigned long LINE_CORNER_HOLD_MS = 40;
 
 // 코너 뒤 안정화와 새 코너 감지 시간도 베스트 코드의 값을 사용한다.
 constexpr unsigned long LINE_SETTLE_MAX_MS = 1500;
@@ -101,18 +106,50 @@ struct SentCommand
 CornerState corner;
 SettleState settle;
 SentCommand sent;
+bool has_driven_before = false;
+bool resume_boost_active = false;
+unsigned long resume_boost_started_at = 0;
 
 LineReading read_line_sensors()
 {
     LineReading reading;
+#if defined(__AVR_ATmega328P__)
+    // Uno: A0=PC0, A5=PC5. 두 핀을 한 번에 읽어 코너에서 판독 간격을 줄인다.
+    const uint8_t pins = PINC;
+    reading.left_black = (pins & _BV(PC0)) != 0;
+    reading.right_black = (pins & _BV(PC5)) != 0;
+#else
     reading.left_black = digitalRead(LEFT_LINE_PIN) == HIGH;
     reading.right_black = digitalRead(RIGHT_LINE_PIN) == HIGH;
+#endif
     return reading;
 }
 
 void drive(uint8_t left_speed, uint8_t left_mode, uint8_t right_speed,
            uint8_t right_mode)
 {
+    // drive_stop() 이후 첫 주행 명령에서만 정지 마찰을 이길 짧은 출발 보강.
+    // 코너 판정과 바퀴 방향은 베스트 코드의 명령을 그대로 따른다.
+    if (sent.stale && has_driven_before)
+    {
+        resume_boost_active = true;
+        resume_boost_started_at = millis();
+    }
+    if (resume_boost_active)
+    {
+        if (millis() - resume_boost_started_at < LINE_RESUME_BOOST_MS)
+        {
+            if (left_mode != RELEASE && left_speed > 0 &&
+                left_speed < LINE_RESUME_PWM)
+                left_speed = LINE_RESUME_PWM;
+            if (right_mode != RELEASE && right_speed > 0 &&
+                right_speed < LINE_RESUME_PWM)
+                right_speed = LINE_RESUME_PWM;
+        }
+        else
+            resume_boost_active = false;
+    }
+
     if (sent.stale || left_speed != sent.left_speed)
     {
         motor_l.setSpeed(left_speed);
@@ -134,6 +171,7 @@ void drive(uint8_t left_speed, uint8_t left_mode, uint8_t right_speed,
         sent.right_mode = right_mode;
     }
     sent.stale = false;
+    has_driven_before = true;
 }
 
 void straight()
@@ -342,7 +380,7 @@ void line_follow_step()
     if (turn_elapsed >= LINE_CORNER_ARM_MS)
         corner.committed = true;
 
-    if (turn_elapsed < LINE_PIVOT_END_MS)
+    if (turn_elapsed >= LINE_PIVOT_START_MS && turn_elapsed < LINE_PIVOT_END_MS)
         pivot_toward(direction);
     else
         gentle_turn(direction, turn_elapsed, LINE_GENTLE_PIVOT_MS);
