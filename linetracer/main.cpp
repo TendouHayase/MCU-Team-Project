@@ -38,7 +38,7 @@ void setup()
 }
 
 void loop()
-{
+{ 
     static bool stopped_for_wall = false;
 
     const bool was_stopped = stopped_for_wall;

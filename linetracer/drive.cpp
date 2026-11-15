@@ -19,15 +19,14 @@ constexpr uint8_t LINE_STRAIGHT_LEFT_PWM = 150;
 constexpr uint8_t LINE_STRAIGHT_RIGHT_PWM = 150;
 constexpr uint8_t LINE_CORNER_PWM = 150;
 
-// 한쪽 검정을 보는 즉시 회전을 시작한다. 20~80ms에는 연속 제자리 회전한다.
-// 20ms 이상 돌면 코너로 확정하고, 그 뒤 선을 놓치면 40ms 더 돈다.
-constexpr unsigned long LINE_PIVOT_START_MS = 20;
+// 코너 검정선을 빠르게 지나쳐도 놓치지 않도록 처음부터 연속 회전한다.
+// 검정 감지가 8ms 이어지면 코너로 확정한다.
 constexpr unsigned long LINE_PIVOT_END_MS = 80;
-constexpr unsigned long LINE_CORNER_ARM_MS = 20;
-constexpr unsigned long LINE_CORNER_HOLD_MS = 40;
+constexpr unsigned long LINE_CORNER_ARM_MS = 8;
+// 검정이 사라진 뒤 추가 회전은 짧게 제한해 선을 지나치지 않게 한다.
+constexpr unsigned long LINE_CORNER_HOLD_MS = 20;
 
-// 코너 뒤 안정화: 중앙(양쪽 흰색)이 200ms 이어지거나 1.5초가 지나면 끝낸다.
-// 안정화 중에도 한쪽 검정이 50ms 이어지면 새 코너로 인정한다.
+// 코너 뒤 안정화와 새 코너 감지 시간도 베스트 코드의 값을 사용한다.
 constexpr unsigned long LINE_SETTLE_MAX_MS = 1500;
 constexpr unsigned long LINE_CENTER_STABLE_MS = 200;
 constexpr unsigned long LINE_SETTLE_NEW_CORNER_MS = 50;
@@ -159,7 +158,7 @@ void gentle_turn(TurnDirection direction, unsigned long elapsed,
     if (elapsed % LINE_GENTLE_CYCLE_MS < pivot_ms)
         pivot_toward(direction);
     else
-        drive(LINE_CORNER_PWM, FORWARD, LINE_CORNER_PWM, FORWARD);
+        straight();
 }
 
 void forget_turn_and_go_straight()
@@ -186,8 +185,7 @@ void settle_on_line(const LineReading& reading, unsigned long now)
         return;
     }
 
-    // begin_settling() 직후 한쪽 검정으로 들어올 수도 있으므로
-    // 회전 시작 시각을 여기서도 잡아 주기를 일정하게 한다.
+    // 같은 쪽 검정이 이어진 시간에 따라 베스트 코드의 회전 펄스를 적용한다.
     if (direction != settle.side_direction)
     {
         settle.side_direction = direction;
@@ -218,8 +216,7 @@ void hold_corner_then_settle(const LineReading& reading, unsigned long now)
     settle_on_line(reading, now);
 }
 
-/// 안정화 중 한 단계. 이번 단계를 처리했으면 true, 안정화가 끝나 일반
-/// 판정으로 넘겨야 하면 false 를 반환한다.
+/// 안정화 중 한 단계. 처리했으면 true, 새 코너/시간 초과이면 일반 판정으로 넘긴다.
 bool settle_step(const LineReading& reading, unsigned long now)
 {
     const TurnDirection side = reading.black_side();
@@ -252,9 +249,8 @@ bool settle_step(const LineReading& reading, unsigned long now)
         settle.center_active &&
         now - settle.center_started_at >= LINE_CENTER_STABLE_MS;
     const bool timed_out = now - settle.started_at >= LINE_SETTLE_MAX_MS;
-    const bool new_corner =
-        settle.side_direction != TurnDirection::None &&
-        now - settle.side_started_at >= LINE_SETTLE_NEW_CORNER_MS;
+    const bool new_corner = settle.side_direction != TurnDirection::None &&
+                            now - settle.side_started_at >= LINE_SETTLE_NEW_CORNER_MS;
 
     if (!new_corner && !centered && !timed_out)
     {
@@ -346,7 +342,7 @@ void line_follow_step()
     if (turn_elapsed >= LINE_CORNER_ARM_MS)
         corner.committed = true;
 
-    if (turn_elapsed >= LINE_PIVOT_START_MS && turn_elapsed < LINE_PIVOT_END_MS)
+    if (turn_elapsed < LINE_PIVOT_END_MS)
         pivot_toward(direction);
     else
         gentle_turn(direction, turn_elapsed, LINE_GENTLE_PIVOT_MS);
