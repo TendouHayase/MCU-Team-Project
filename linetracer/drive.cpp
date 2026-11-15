@@ -30,7 +30,13 @@ const unsigned long LINE_SETTLE_SHORT_PIVOT_MS = 8;
 const unsigned long LINE_SETTLE_LONG_PIVOT_MS = 12;
 const unsigned long LINE_SETTLE_STRONG_AFTER_MS = 35;
 
-int8_t lastTurn = 0; // +1 우회전, -1 좌회전, 0 방향 기록 없음
+enum class TurnDirection : int8_t {
+    Left = -1,
+    None = 0,
+    Right = 1
+};
+
+TurnDirection lastTurn = TurnDirection::None;
 unsigned long turnStartedAt = 0;
 unsigned long whiteStartedAt = 0;
 bool whiteAfterTurn = false;
@@ -41,21 +47,21 @@ unsigned long settleStartedAt = 0;
 bool settleSawSide = false;
 bool settleCenterActive = false;
 unsigned long settleCenterStartedAt = 0;
-int8_t settleSideDirection = 0;
+TurnDirection settleSideDirection = TurnDirection::None;
 unsigned long settleSideStartedAt = 0;
 // main.cpp가 벽 앞에서 RELEASE한 뒤에는 실제 모터 상태와 명령 기억이 달라진다.
 // 재출발 시 모터 속도와 방향을 다시 보내도록 표시한다.
 bool motorOutputNeedsRefresh = true;
 
-inline int8_t blackSideDirection(int leftSensor, int rightSensor)
+inline TurnDirection blackSideDirection(int leftSensor, int rightSensor)
 {
     // A0 왼쪽 / A5 오른쪽: LOW=흰색, HIGH=검정.
-    // 오른쪽만 검정이면 +1, 왼쪽만 검정이면 -1을 반환한다.
+    // 한쪽만 검정일 때 그쪽으로 회전하고, 그 외에는 방향이 없다.
     if (leftSensor == LOW && rightSensor == HIGH)
-        return 1;
+        return TurnDirection::Right;
     if (leftSensor == HIGH && rightSensor == LOW)
-        return -1;
-    return 0;
+        return TurnDirection::Left;
+    return TurnDirection::None;
 }
 
 void drive(uint8_t leftSpeed, uint8_t leftMode,
@@ -92,19 +98,19 @@ void straight()
           LINE_STRAIGHT_RIGHT_PWM, FORWARD);
 }
 
-void pivotToward(int8_t direction)
+void pivotToward(TurnDirection direction)
 {
     // 우회전: 왼쪽 전진·오른쪽 후진. 좌회전: 왼쪽 후진·오른쪽 전진.
     // 코너에서는 두 바퀴에 같은 PWM을 주고 방향만 반대로 한다.
-    if (direction > 0)
+    if (direction == TurnDirection::Right)
         drive(LINE_CORNER_PWM, FORWARD,
               LINE_CORNER_PWM, BACKWARD);
-    else
+    else if (direction == TurnDirection::Left)
         drive(LINE_CORNER_PWM, BACKWARD,
               LINE_CORNER_PWM, FORWARD);
 }
 
-void gentleTurn(int8_t direction, unsigned long elapsed,
+void gentleTurn(TurnDirection direction, unsigned long elapsed,
                 unsigned long pivotMs)
 {
     // 검정 쪽으로 계속 강하게 돌면 선을 지나칠 수 있다.
@@ -122,18 +128,18 @@ void beginSettling(unsigned long now)
     settleStartedAt = now;
     settleSawSide = false;
     settleCenterActive = false;
-    settleSideDirection = 0;
-    lastTurn = 0;
+    settleSideDirection = TurnDirection::None;
+    lastTurn = TurnDirection::None;
     whiteAfterTurn = false;
     cornerCommitted = false;
 }
 
 void settleOnLine(int leftSensor, int rightSensor, unsigned long now)
 {
-    const int8_t direction = blackSideDirection(leftSensor, rightSensor);
+    const TurnDirection direction = blackSideDirection(leftSensor, rightSensor);
 
     // 양쪽 센서가 같은 색이면 직진한다.
-    if (direction == 0) {
+    if (direction == TurnDirection::None) {
         straight();
         return;
     }
@@ -151,7 +157,7 @@ void settleOnLine(int leftSensor, int rightSensor, unsigned long now)
     gentleTurn(direction, sideElapsed, pulseMs);
 }
 
-void turn(int8_t direction, bool strong, unsigned long now)
+void turn(TurnDirection direction, bool strong, unsigned long now)
 {
     // 처음에는 완만하게, 20~80ms에는 연속으로 회전한다.
     if (strong)
@@ -167,7 +173,7 @@ void turn(int8_t direction, bool strong, unsigned long now)
 void resetDriveStateAfterWallStop()
 {
     motorOutputNeedsRefresh = true;
-    lastTurn = 0;
+    lastTurn = TurnDirection::None;
     turnStartedAt = 0;
     whiteStartedAt = 0;
     whiteAfterTurn = false;
@@ -177,7 +183,7 @@ void resetDriveStateAfterWallStop()
     settleSawSide = false;
     settleCenterActive = false;
     settleCenterStartedAt = 0;
-    settleSideDirection = 0;
+    settleSideDirection = TurnDirection::None;
     settleSideStartedAt = 0;
 }
 
@@ -189,10 +195,10 @@ void cornerRecoveryStep()
     const int rightSensor = digitalRead(A5);
 
     if (settling) {
-        const int8_t sideDirection = blackSideDirection(leftSensor, rightSensor);
+        const TurnDirection sideDirection = blackSideDirection(leftSensor, rightSensor);
         const bool bothWhite = leftSensor == LOW && rightSensor == LOW;
 
-        if (sideDirection != 0) {
+        if (sideDirection != TurnDirection::None) {
             settleSawSide = true;
             settleCenterActive = false;
             if (sideDirection != settleSideDirection) {
@@ -200,13 +206,13 @@ void cornerRecoveryStep()
                 settleSideStartedAt = now;
             }
         } else if (bothWhite && settleSawSide) {
-            settleSideDirection = 0;
+            settleSideDirection = TurnDirection::None;
             if (!settleCenterActive) {
                 settleCenterStartedAt = now;
                 settleCenterActive = true;
             }
         } else {
-            settleSideDirection = 0;
+            settleSideDirection = TurnDirection::None;
             settleCenterActive = false;
         }
 
@@ -214,7 +220,7 @@ void cornerRecoveryStep()
         const bool centered = settleCenterActive &&
             now - settleCenterStartedAt >= LINE_CENTER_STABLE_MS;
         const bool timedOut = now - settleStartedAt >= LINE_SETTLE_MAX_MS;
-        const bool newCorner = settleSideDirection != 0 &&
+        const bool newCorner = settleSideDirection != TurnDirection::None &&
             now - settleSideStartedAt >= LINE_SETTLE_NEW_CORNER_MS;
         if (!newCorner && !centered && !timedOut) {
             settleOnLine(leftSensor, rightSensor, now);
@@ -239,7 +245,8 @@ void cornerRecoveryStep()
     // 1/0 왼쪽 검정: 좌회전.
     // 1/1 양쪽 검정: 직진 또는 짧은 코너 유지.
     if (leftSensor == LOW && rightSensor == LOW) {
-        if (lastTurn != 0 && now - turnStartedAt >= LINE_CORNER_ARM_MS) {
+        if (lastTurn != TurnDirection::None &&
+            now - turnStartedAt >= LINE_CORNER_ARM_MS) {
             if (!whiteAfterTurn) {
                 whiteStartedAt = now;
                 whiteAfterTurn = true;
@@ -252,7 +259,7 @@ void cornerRecoveryStep()
             settleOnLine(leftSensor, rightSensor, now);
             return;
         }
-        lastTurn = 0;
+        lastTurn = TurnDirection::None;
         whiteAfterTurn = false;
         straight();
         return;
@@ -272,13 +279,13 @@ void cornerRecoveryStep()
             settleOnLine(leftSensor, rightSensor, now);
             return;
         }
-        lastTurn = 0;
+        lastTurn = TurnDirection::None;
         whiteAfterTurn = false;
         straight();
         return;
     }
 
-    const int8_t direction = blackSideDirection(leftSensor, rightSensor);
+    const TurnDirection direction = blackSideDirection(leftSensor, rightSensor);
     if (cornerCommitted && direction != lastTurn) {
         // 코너 직후 반대쪽 센서가 검정을 보면 즉시 반대로 돌지 않는다.
         beginSettling(now);
