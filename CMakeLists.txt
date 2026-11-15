@@ -8,7 +8,8 @@ cmake_minimum_required(VERSION 3.20)
 #   cmake/avr-toolchain.cmake
 #   linetracer/
 #     linetracer.ino      <- 비워 둔다. CMake 는 .ino 를 컴파일하지 않는다.
-#     src/                <- 여기 아래의 .c/.cpp/.S 는 전부 컴파일된다 (Arduino 규칙과 동일)
+#     main.cpp, drive.cpp <- 스케치 루트의 .c/.cpp/.S 는 컴파일된다
+#     src/                <- 여기 아래의 .c/.cpp/.S 도 전부 컴파일된다 (Arduino 규칙과 동일)
 #
 # 구성 예
 #   cmake -S . -B build -G Ninja -DUPLOAD_PORT=COM5

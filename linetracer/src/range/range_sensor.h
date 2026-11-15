@@ -42,11 +42,6 @@ constexpr uint16_t ICR1_TOP = static_cast<uint16_t>(PERIOD_TICKS - 1);
 constexpr uint16_t OCR1A_TRIGGER = static_cast<uint16_t>(TRIGGER_TICKS - 1);
 } // namespace timer1
 
-constexpr uint64_t pow2_fraction_abs_diff(uint64_t a, uint64_t b)
-{
-    return a > b ? a - b : b - a;
-}
-
 struct Pow2Fraction
 {
     uint16_t num;     // 분자
