@@ -25,7 +25,7 @@ void setup()
     motor_r.run(RELEASE);
     // 벽 감지는 다음 단계에서 완성한다. 현재 거리 센서 코드는 송신 펄스와
     // Timer1 비교 인터럽트 처리 함수가 없어 라인 주행 중에는 시작하지 않는다.
-    // RangeSensor::begin();
+    RangeSensor::begin();
 }
 
 void loop()
@@ -34,4 +34,3 @@ void loop()
     cornerRecoveryStep();
 }
 
-ISR(PCINT0_vect) { RangeSensor::echo_edge_isr(); }

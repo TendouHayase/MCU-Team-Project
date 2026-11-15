@@ -1,11 +1,7 @@
 #include <Arduino.h>
 #include "src/AFMotor/AFMotor.h"
-#include "src/range_sensor.h"
+#include "src/range/range_sensor.h"
 
-// range_sensor.h의 정적 멤버는 프로젝트 전체에서 한 번만 정의한다.
-bool RangeSensor::is_renew = false;
-uint16_t RangeSensor::range_ticks = 0;
-uint16_t RangeSensor::distance = 0;
 
 // 모터 객체와 setup()/loop()는 기존 main.cpp에 그대로 둔다.
 extern AF_DCMotor motor_l; // M1: 왼쪽 바퀴
@@ -16,8 +12,8 @@ namespace {
 // 직진에서 오른쪽으로 조금 휘므로 왼쪽 바퀴만 5 낮춰 시험한다.
 // 현재 비교값: 왼쪽 145 / 오른쪽 150. 더 조정할 때는 왼쪽 값만 바꾼다.
 // PWM은 전압 측정값이 아니라 모터에 주는 0~255 속도 명령이다.
-const uint8_t LINE_STRAIGHT_LEFT_PWM = 150;
-const uint8_t LINE_STRAIGHT_RIGHT_PWM = 180;
+const uint8_t LINE_STRAIGHT_LEFT_PWM = 200;
+const uint8_t LINE_STRAIGHT_RIGHT_PWM = 240;
 // 코너의 강한 제자리 회전은 가장 잘 되던 양쪽 150을 유지한다.
 const uint8_t LINE_CORNER_PWM = 150;
 
