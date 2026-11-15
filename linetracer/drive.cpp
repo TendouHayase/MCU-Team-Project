@@ -1,38 +1,29 @@
-#pragma once
 #include <Arduino.h>
 #include "src/AFMotor/AFMotor.h"
-#include "src/range/range_sensor.h"
 
-
-// 모터 객체와 setup()/loop()는 기존 main.cpp에 그대로 둔다.
+// 모터 객체와 setup()/loop()는 main.cpp에서 정의한다.
 extern AF_DCMotor motor_l; // M1: 왼쪽 바퀴
 extern AF_DCMotor motor_r; // M4: 오른쪽 바퀴
 
 namespace {
 
-// 초음파 센서 추가 전 코너까지 잘 돌았던 직진 PWM 비율로 복원한다.
-// 직진: 왼쪽 200 / 오른쪽 240. 이후 비율 조정은 이 두 값으로 한다.
-// PWM은 전압 측정값이 아니라 모터에 주는 0~255 속도 명령이다.
-const uint8_t LINE_STRAIGHT_LEFT_PWM = 200;
-const uint8_t LINE_STRAIGHT_RIGHT_PWM = 240;
-// 코너의 제자리 회전과 회전 사이 전진은 기존 양쪽 150을 유지한다.
+// 직진과 코너 회전의 PWM. PWM은 측정 전압이 아닌 0~255 속도 명령이다.
+const uint8_t LINE_STRAIGHT_LEFT_PWM = 150;
+const uint8_t LINE_STRAIGHT_RIGHT_PWM = 150;
 const uint8_t LINE_CORNER_PWM = 150;
 
-// 성공했던 코너 코드의 시간 판정은 유지한다.
-// 한쪽 검정을 보는 즉시 회전을 시작하고, 20~80ms에는 연속 제자리 회전한다.
+// 한쪽 검정을 보는 즉시 회전을 시작한다. 20~80ms에는 연속 제자리 회전한다.
 const unsigned long LINE_PIVOT_START_MS = 20;
 const unsigned long LINE_PIVOT_END_MS = 80;
 const unsigned long LINE_CORNER_ARM_MS = 20;
 const unsigned long LINE_CORNER_HOLD_MS = 40;
 
-// 코너 뒤 직선 진입을 판정하는 시간도 성공했던 코드의 값으로 되돌린다.
-// 안정화 중 같은 쪽 검정이 50ms 이어지면 새 코너로 인정한다.
+// 코너 뒤 안정화 중에도 한쪽 검정이 50ms 이어지면 새 코너로 인정한다.
 const unsigned long LINE_SETTLE_MAX_MS = 1500;
 const unsigned long LINE_CENTER_STABLE_MS = 200;
 const unsigned long LINE_SETTLE_NEW_CORNER_MS = 50;
 
-// 짧은 제자리 회전과 직선 전진을 번갈아 완만하게 조향한다.
-// 회전 펄스의 시간은 그대로 두고, 직선 전진의 좌우 비율만 조정한다.
+// 짧은 제자리 회전과 전진을 번갈아 완만하게 조향한다.
 const unsigned long LINE_GENTLE_CYCLE_MS = 30;
 const unsigned long LINE_GENTLE_PIVOT_MS = 12;
 const unsigned long LINE_SETTLE_SHORT_PIVOT_MS = 8;
@@ -52,9 +43,20 @@ bool settleCenterActive = false;
 unsigned long settleCenterStartedAt = 0;
 int8_t settleSideDirection = 0;
 unsigned long settleSideStartedAt = 0;
-// main.cpp가 벽 앞에서 모터를 RELEASE하면 아래의 명령 기억과 실제 모터 상태가
-// 달라진다. 재출발 시 속도와 방향을 한 번 강제로 다시 보내기 위한 표시다.
-bool driveCommandInvalid = true;
+// main.cpp가 벽 앞에서 RELEASE한 뒤에는 실제 모터 상태와 명령 기억이 달라진다.
+// 재출발 시 모터 속도와 방향을 다시 보내도록 표시한다.
+bool motorOutputNeedsRefresh = true;
+
+inline int8_t blackSideDirection(int leftSensor, int rightSensor)
+{
+    // A0 왼쪽 / A5 오른쪽: LOW=흰색, HIGH=검정.
+    // 오른쪽만 검정이면 +1, 왼쪽만 검정이면 -1을 반환한다.
+    if (leftSensor == LOW && rightSensor == HIGH)
+        return 1;
+    if (leftSensor == HIGH && rightSensor == LOW)
+        return -1;
+    return 0;
+}
 
 void drive(uint8_t leftSpeed, uint8_t leftMode,
            uint8_t rightSpeed, uint8_t rightMode)
@@ -65,23 +67,23 @@ void drive(uint8_t leftSpeed, uint8_t leftMode,
     static uint8_t previousLeftMode = 0;
     static uint8_t previousRightMode = 0;
 
-    if (driveCommandInvalid || leftSpeed != previousLeftSpeed) {
+    if (motorOutputNeedsRefresh || leftSpeed != previousLeftSpeed) {
         motor_l.setSpeed(leftSpeed);
         previousLeftSpeed = leftSpeed;
     }
-    if (driveCommandInvalid || rightSpeed != previousRightSpeed) {
+    if (motorOutputNeedsRefresh || rightSpeed != previousRightSpeed) {
         motor_r.setSpeed(rightSpeed);
         previousRightSpeed = rightSpeed;
     }
-    if (driveCommandInvalid || leftMode != previousLeftMode) {
+    if (motorOutputNeedsRefresh || leftMode != previousLeftMode) {
         motor_l.run(leftMode);
         previousLeftMode = leftMode;
     }
-    if (driveCommandInvalid || rightMode != previousRightMode) {
+    if (motorOutputNeedsRefresh || rightMode != previousRightMode) {
         motor_r.run(rightMode);
         previousRightMode = rightMode;
     }
-    driveCommandInvalid = false;
+    motorOutputNeedsRefresh = false;
 }
 
 void straight()
@@ -93,7 +95,7 @@ void straight()
 void pivotToward(int8_t direction)
 {
     // 우회전: 왼쪽 전진·오른쪽 후진. 좌회전: 왼쪽 후진·오른쪽 전진.
-    // 코너에서는 두 바퀴 모두 PWM 150이며 방향만 반대로 준다.
+    // 코너에서는 두 바퀴에 같은 PWM을 주고 방향만 반대로 한다.
     if (direction > 0)
         drive(LINE_CORNER_PWM, FORWARD,
               LINE_CORNER_PWM, BACKWARD);
@@ -107,8 +109,6 @@ void gentleTurn(int8_t direction, unsigned long elapsed,
 {
     // 검정 쪽으로 계속 강하게 돌면 선을 지나칠 수 있다.
     // 한 주기의 앞부분만 짧게 회전하고 나머지는 두 바퀴를 전진시킨다.
-    // 코너 조향 중 전진 부분은 기존 150/150을 유지한다.
-    // 200/240은 센서가 직진 상태를 가리킬 때만 적용한다.
     if (elapsed % LINE_GENTLE_CYCLE_MS < pivotMs)
         pivotToward(direction);
     else
@@ -130,13 +130,9 @@ void beginSettling(unsigned long now)
 
 void settleOnLine(int leftSensor, int rightSensor, unsigned long now)
 {
-    int8_t direction = 0;
-    if (leftSensor == LOW && rightSensor == HIGH)
-        direction = 1;
-    else if (leftSensor == HIGH && rightSensor == LOW)
-        direction = -1;
+    const int8_t direction = blackSideDirection(leftSensor, rightSensor);
 
-    // 양쪽 센서가 같은 색이면 직진 기준인 200/240으로 전진한다.
+    // 양쪽 센서가 같은 색이면 직진한다.
     if (direction == 0) {
         straight();
         return;
@@ -157,9 +153,7 @@ void settleOnLine(int leftSensor, int rightSensor, unsigned long now)
 
 void turn(int8_t direction, bool strong, unsigned long now)
 {
-    // 이전 성공 코드처럼 처음에는 완만하게, 20~80ms에는 강하게 회전한다.
-    // 한 바퀴만 놓던 동작은 좌우 PWM을 동일하게 유지하기 위해 짧은 회전
-    // 펄스로 대체한다. 검정이 사라지면 즉시 다음 센서 상태를 판단한다.
+    // 처음에는 완만하게, 20~80ms에는 연속으로 회전한다.
     if (strong)
         pivotToward(direction);
     else
@@ -168,11 +162,23 @@ void turn(int8_t direction, bool strong, unsigned long now)
 
 } // namespace
 
-// main.cpp가 모터를 직접 RELEASE한 뒤 호출한다.
-// 다음 cornerRecoveryStep()의 첫 모터 명령을 반드시 실제 하드웨어에 보낸다.
-void invalidateDriveCommandCache()
+// 벽 앞에서 정지한 직후 한 번 호출한다.
+// 다음 주행 명령을 다시 보내고, 오래된 코너 시간도 버린다.
+void resetDriveStateAfterWallStop()
 {
-    driveCommandInvalid = true;
+    motorOutputNeedsRefresh = true;
+    lastTurn = 0;
+    turnStartedAt = 0;
+    whiteStartedAt = 0;
+    whiteAfterTurn = false;
+    cornerCommitted = false;
+    settling = false;
+    settleStartedAt = 0;
+    settleSawSide = false;
+    settleCenterActive = false;
+    settleCenterStartedAt = 0;
+    settleSideDirection = 0;
+    settleSideStartedAt = 0;
 }
 
 // main.cpp의 loop()에서 반복 호출한다. delay() 없이 매번 센서를 다시 읽는다.
@@ -183,11 +189,7 @@ void cornerRecoveryStep()
     const int rightSensor = digitalRead(A5);
 
     if (settling) {
-        int8_t sideDirection = 0;
-        if (leftSensor == LOW && rightSensor == HIGH)
-            sideDirection = 1;
-        else if (leftSensor == HIGH && rightSensor == LOW)
-            sideDirection = -1;
+        const int8_t sideDirection = blackSideDirection(leftSensor, rightSensor);
         const bool bothWhite = leftSensor == LOW && rightSensor == LOW;
 
         if (sideDirection != 0) {
@@ -208,8 +210,7 @@ void cornerRecoveryStep()
             settleCenterActive = false;
         }
 
-        // 이전 성공 코드의 새 코너 감지를 복구한다.
-        // 1.5초 안정화 시간이 남았어도 한쪽 검정이 50ms 지속되면 회전한다.
+        // 안정화 시간이 남아도 한쪽 검정이 50ms 지속되면 새 코너로 본다.
         const bool centered = settleCenterActive &&
             now - settleCenterStartedAt >= LINE_CENTER_STABLE_MS;
         const bool timedOut = now - settleStartedAt >= LINE_SETTLE_MAX_MS;
@@ -277,8 +278,7 @@ void cornerRecoveryStep()
         return;
     }
 
-    const int8_t direction =
-        (leftSensor == LOW && rightSensor == HIGH) ? 1 : -1;
+    const int8_t direction = blackSideDirection(leftSensor, rightSensor);
     if (cornerCommitted && direction != lastTurn) {
         // 코너 직후 반대쪽 센서가 검정을 보면 즉시 반대로 돌지 않는다.
         beginSettling(now);
@@ -286,7 +286,7 @@ void cornerRecoveryStep()
         return;
     }
     if (direction != lastTurn) {
-        // 직선에서 검정을 보는 첫 순간부터 회전한다. 12ms 지연은 제거했다.
+        // 직선에서 검정을 보는 첫 순간부터 회전한다.
         lastTurn = direction;
         turnStartedAt = now;
         cornerCommitted = false;
