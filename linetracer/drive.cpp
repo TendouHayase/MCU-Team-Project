@@ -1,3 +1,4 @@
+#pragma once
 #include <Arduino.h>
 #include "src/AFMotor/AFMotor.h"
 #include "src/range/range_sensor.h"
@@ -9,12 +10,12 @@ extern AF_DCMotor motor_r; // M4: 오른쪽 바퀴
 
 namespace {
 
-// 직진에서 오른쪽으로 조금 휘므로 왼쪽 바퀴만 5 낮춰 시험한다.
-// 현재 비교값: 왼쪽 145 / 오른쪽 150. 더 조정할 때는 왼쪽 값만 바꾼다.
+// 초음파 센서 추가 전 코너까지 잘 돌았던 직진 PWM 비율로 복원한다.
+// 직진: 왼쪽 200 / 오른쪽 240. 이후 비율 조정은 이 두 값으로 한다.
 // PWM은 전압 측정값이 아니라 모터에 주는 0~255 속도 명령이다.
 const uint8_t LINE_STRAIGHT_LEFT_PWM = 200;
 const uint8_t LINE_STRAIGHT_RIGHT_PWM = 240;
-// 코너의 강한 제자리 회전은 가장 잘 되던 양쪽 150을 유지한다.
+// 코너의 제자리 회전과 회전 사이 전진은 기존 양쪽 150을 유지한다.
 const uint8_t LINE_CORNER_PWM = 150;
 
 // 성공했던 코너 코드의 시간 판정은 유지한다.
@@ -51,6 +52,9 @@ bool settleCenterActive = false;
 unsigned long settleCenterStartedAt = 0;
 int8_t settleSideDirection = 0;
 unsigned long settleSideStartedAt = 0;
+// main.cpp가 벽 앞에서 모터를 RELEASE하면 아래의 명령 기억과 실제 모터 상태가
+// 달라진다. 재출발 시 속도와 방향을 한 번 강제로 다시 보내기 위한 표시다.
+bool driveCommandInvalid = true;
 
 void drive(uint8_t leftSpeed, uint8_t leftMode,
            uint8_t rightSpeed, uint8_t rightMode)
@@ -61,22 +65,23 @@ void drive(uint8_t leftSpeed, uint8_t leftMode,
     static uint8_t previousLeftMode = 0;
     static uint8_t previousRightMode = 0;
 
-    if (leftSpeed != previousLeftSpeed) {
+    if (driveCommandInvalid || leftSpeed != previousLeftSpeed) {
         motor_l.setSpeed(leftSpeed);
         previousLeftSpeed = leftSpeed;
     }
-    if (rightSpeed != previousRightSpeed) {
+    if (driveCommandInvalid || rightSpeed != previousRightSpeed) {
         motor_r.setSpeed(rightSpeed);
         previousRightSpeed = rightSpeed;
     }
-    if (leftMode != previousLeftMode) {
+    if (driveCommandInvalid || leftMode != previousLeftMode) {
         motor_l.run(leftMode);
         previousLeftMode = leftMode;
     }
-    if (rightMode != previousRightMode) {
+    if (driveCommandInvalid || rightMode != previousRightMode) {
         motor_r.run(rightMode);
         previousRightMode = rightMode;
     }
+    driveCommandInvalid = false;
 }
 
 void straight()
@@ -102,8 +107,8 @@ void gentleTurn(int8_t direction, unsigned long elapsed,
 {
     // 검정 쪽으로 계속 강하게 돌면 선을 지나칠 수 있다.
     // 한 주기의 앞부분만 짧게 회전하고 나머지는 두 바퀴를 전진시킨다.
-    // 코너 조향 중 전진 부분은 성공했던 150/150을 유지한다.
-    // 145/150은 센서가 직진 상태를 가리킬 때만 적용한다.
+    // 코너 조향 중 전진 부분은 기존 150/150을 유지한다.
+    // 200/240은 센서가 직진 상태를 가리킬 때만 적용한다.
     if (elapsed % LINE_GENTLE_CYCLE_MS < pivotMs)
         pivotToward(direction);
     else
@@ -131,7 +136,7 @@ void settleOnLine(int leftSensor, int rightSensor, unsigned long now)
     else if (leftSensor == HIGH && rightSensor == LOW)
         direction = -1;
 
-    // 양쪽 센서가 같은 색이면 현재 시험 중인 145/150 비율로 전진한다.
+    // 양쪽 센서가 같은 색이면 직진 기준인 200/240으로 전진한다.
     if (direction == 0) {
         straight();
         return;
@@ -162,6 +167,13 @@ void turn(int8_t direction, bool strong, unsigned long now)
 }
 
 } // namespace
+
+// main.cpp가 모터를 직접 RELEASE한 뒤 호출한다.
+// 다음 cornerRecoveryStep()의 첫 모터 명령을 반드시 실제 하드웨어에 보낸다.
+void invalidateDriveCommandCache()
+{
+    driveCommandInvalid = true;
+}
 
 // main.cpp의 loop()에서 반복 호출한다. delay() 없이 매번 센서를 다시 읽는다.
 void cornerRecoveryStep()
