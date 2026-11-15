@@ -14,18 +14,23 @@ constexpr uint8_t VELOCITY = 100;
 AF_DCMotor motor_l(1); // 모터드라이버 L293D  1: M1에 연결,  4: M4에 연결
 AF_DCMotor motor_r(4);
 
+// 주행 제어는 drive.cpp에 두고, 이 파일은 Arduino 진입 함수만 유지한다.
+void cornerRecoveryStep();
+
 void setup()
 {
     motor_l.setSpeed(VELOCITY); // 왼쪽 모터의 속도
     motor_l.run(RELEASE);
     motor_r.setSpeed(VELOCITY); // 오른쪽 모터의 속도
     motor_r.run(RELEASE);
-    RangeSensor::begin();
+    // 벽 감지는 다음 단계에서 완성한다. 현재 거리 센서 코드는 송신 펄스와
+    // Timer1 비교 인터럽트 처리 함수가 없어 라인 주행 중에는 시작하지 않는다.
+    // RangeSensor::begin();
 }
-void cornerRecoveryStep();
 
 void loop()
 {
+    // 센서 판정과 단계별 조향은 drive.cpp에서 처리한다.
     cornerRecoveryStep();
 }
 
