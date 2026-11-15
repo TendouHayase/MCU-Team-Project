@@ -5,7 +5,7 @@
  */
 
 #include "src/AFMotor/AFMotor.h"
-#include "src/range_sensor.h"
+#include "src/range/range_sensor.h"
 
 #include <Arduino.h>
 
