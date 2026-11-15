@@ -32,5 +32,9 @@ void loop()
 {
     // 센서 판정과 단계별 조향은 drive.cpp에서 처리한다.
     cornerRecoveryStep();
+    if (RangeSensor::read().distance > 50 && RangeSensor::read().distance < 150)
+    {
+        motor_l.run(BRAKE);
+        motor_r.run(BRAKE);
+    }
 }
-
