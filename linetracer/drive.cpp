@@ -8,12 +8,12 @@ extern AF_DCMotor motor_r; // M4: 오른쪽 바퀴
 
 namespace {
 
-// 직진에서 오른쪽으로 휘어서 오른쪽을 더 세게 준다(측정: 2초에 50cm 직진).
-// 200/240에서 낮췄다. 시뮬레이션에서 곡선 통과가 23/36 -> 29/36으로 늘었고,
-// 130/156부터는 직선에서 좌우로 닿는 횟수가 7배로 늘었다.
-// 직각은 속도와 상관없이 못 돌았다
-const uint8_t LINE_STRAIGHT_LEFT_PWM = 150;
-const uint8_t LINE_STRAIGHT_RIGHT_PWM = 180;
+// 직진에서 오른쪽으로 휘어서 오른쪽을 더 세게 준다. 휘지 않는 비율은
+// 바퀴 데드밴드(왼 39, 오 47)를 뺀 나머지가 1 : 1.2. 150/180은 2초에 50cm.
+// 순위 점수 때문에 10씩 올려 시험했다. 실차에서 170/204까지 모퉁이를 돌고
+// 180/216부터 놓쳤다
+const uint8_t LINE_STRAIGHT_LEFT_PWM = 170;
+const uint8_t LINE_STRAIGHT_RIGHT_PWM = 204;
 // 코너의 강한 제자리 회전은 가장 잘 되던 양쪽 150을 유지한다.
 const uint8_t LINE_CORNER_PWM = 150;
 
