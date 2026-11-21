@@ -17,8 +17,10 @@ const bool CALIBRATION_MODE = false;
 void calibration_setup();
 void calibration_loop();
 
-// 거리는 mm 단위. 15cm 이내면 멈추고, 20cm 이상 멀어지면 다시 출발한다.
-const uint16_t WALL_STOP_MM = 150;
+// 거리는 mm 단위. 10cm 이내면 멈추고, 20cm 이상 멀어지면 다시 출발한다.
+// 평가는 벽에서 10cm +-5cm. 거의 즉시 서므로 측정 잡음이나 재는 기준점이
+// 몇 cm 달라도 범위 안에 들도록 한가운데를 노린다
+const uint16_t WALL_STOP_MM = 100;
 const uint16_t WALL_RESUME_MM = 200;
 // 기록 저장은 EEPROM 쓰기라 최대 3초 멈춘다. 주변 물건 때문에 잠깐 서는 것까지
 // 저장하면 그때마다 3초씩 서 버려서, 이만큼 계속 서 있을 때만 저장한다
