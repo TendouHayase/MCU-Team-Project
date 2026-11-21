@@ -9,3 +9,4 @@ CTestTestfile.cmake
 _deps/
 CMakeLists.txt.user
 compile_commands.json
+*.ppt*
