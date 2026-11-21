@@ -1,5 +1,7 @@
 # 라인트레이서 — IoT 임베디드실습 팀 프로젝트
 
+> 주행 코드(`linetracer/drive.cpp` 등)와 이 문서는 AI(Claude)로 작성했습니다.
+
 Arduino UNO 기반 라인트레이서입니다. 검정 선을 따라 코스를 돌고, 초음파 센서로 벽을 감지해
 벽 앞 10cm 근처에서 멈췄다가 벽을 치우면 다시 출발합니다.
 
@@ -39,9 +41,8 @@ cmake --build build --target upload    # avrdude로 업로드
 | 경로 | 역할 |
 |---|---|
 | `linetracer/main.cpp` | `setup()`/`loop()`. 벽 정지 판단 후 라인 주행 한 단계 호출 |
-| `linetracer/drive.cpp` | 라인 주행 알고리즘 (아래 설명의 핵심) |
-| `linetracer/calibration.cpp` | 측정 모드. 정해진 PWM으로 일정 시간 달려 속도·회전량을 잰다 |
-| `linetracer/trace_log.*` | 주행 기록을 EEPROM에 남기고 다음 부팅 때 시리얼로 출력 (현재 미사용, 아래 참고) |
+| `linetracer/drive.h`, `drive.cpp` | 라인 주행 알고리즘 (아래 설명의 핵심) |
+| `linetracer/calibration.h`, `calibration.cpp` | 측정 모드. 정해진 PWM으로 일정 시간 달려 속도·회전량을 잰다 |
 | `linetracer/src/AFMotor/` | L293D 모터 실드 라이브러리 |
 | `linetracer/src/range/` | 초음파 거리 센서 드라이버 (Timer1 인터럽트로 60ms마다 측정) |
 | `cmake/`, `CMakeLists.txt`, `CMakePresets.json` | CMake 빌드 설정 |
@@ -99,8 +100,8 @@ loop() 매 회
 | 이름 | 함수 | 바퀴 명령 |
 |---|---|---|
 | 직진 | `straight()` | 왼쪽 170 / 오른쪽 204 전진 |
-| 제자리 회전 | `pivotToward(dir)` | 한쪽 150 전진, 반대쪽 150 후진 (`dir` +1 = 우회전, -1 = 좌회전) |
-| 완만한 조향 | `gentleTurn(dir, ...)` | 30ms 주기 중 앞부분 몇 ms만 제자리 회전, 나머지는 150/150 전진 |
+| 제자리 회전 | `pivot_toward(dir)` | 한쪽 150 전진, 반대쪽 150 후진 (`dir` +1 = 우회전, -1 = 좌회전) |
+| 완만한 조향 | `gentle_turn(dir, ...)` | 30ms 주기 중 앞부분 몇 ms만 제자리 회전, 나머지는 150/150 전진 |
 
 **완만한 조향**은 "짧은 회전 펄스 + 전진"을 30ms마다 반복하는 방식입니다. 회전하는 시간 비율(예: 30ms 중
 12ms = 40%)로 꺾는 세기를 조절하는 것이라, PWM 듀티비로 밝기를 조절하는 것과 같은 원리입니다.
@@ -127,7 +128,7 @@ loop() 매 회
 | 검정이 이어진 시간 | 동작 | 이유 |
 |---|---|---|
 | 0 ~ 20ms | 완만한 조향 (30ms 중 12ms 회전) | 직선에서 살짝 스친 것일 수 있어 약하게 고친다 |
-| 20 ~ 80ms | 계속 제자리 회전 | 20ms 넘게 밟고 있으면 코너로 본다 (`cornerCommitted = true`) |
+| 20 ~ 80ms | 계속 제자리 회전 | 20ms 넘게 밟고 있으면 코너로 본다 (`corner_committed = true`) |
 | 80ms 이후 | 다시 완만한 조향 | 계속 강하게 돌면 선을 지나쳐 버린다 |
 
 **경우 1 — 양쪽 흰색**
@@ -211,9 +212,7 @@ stateDiagram-v2
 - **벽 정지 위치는 매번 1~2cm 흔들립니다.** 초음파가 60ms마다 한 번만 재기 때문에 그 사이에
   차가 약 1.8cm(170/204 기준) 갑니다.
 
-### 6. 보조 기능
-
-#### 측정 모드 (`calibration.cpp`)
+### 6. 측정 모드 (`calibration.cpp`)
 
 `main.cpp`의 `CALIBRATION_MODE`를 `true`로, `calibration.cpp`의 `TEST_NUMBER`를 원하는 번호로 바꿔
 업로드하면, 전원을 켜고 3초 뒤 정해진 PWM으로 한 번 달리고 멈춥니다. 간 거리나 돈 각도를 자로 잽니다.
@@ -228,10 +227,3 @@ stateDiagram-v2
 | 6 | 0 / 254 | 2초 | 원호 좌회전 각도 |
 
 배터리 상태에 따른 속도 변화를 확인할 때 1번을 다시 돌려 50cm와 비교하면 됩니다.
-
-#### 주행 기록 (`trace_log.*`)
-
-주행 중 센서·모터 값을 RAM에 기록해 두었다가, 벽 앞에서 1초 넘게 서 있으면 EEPROM에 저장하고, 다음에
-USB를 연결해 시리얼 모니터(115200)를 열면 CSV로 출력하는 기능입니다. 다른 주행 알고리즘을 시험할 때
-쓰던 것이라 **현재 `drive.cpp`는 기록을 남기지 않습니다**(`trace_sample()`을 부르지 않음). 필요하면
-`line_follow_step()` 끝에서 `trace_sample()`을 호출하도록 추가하면 됩니다.

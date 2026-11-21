@@ -1,3 +1,5 @@
+#include "calibration.h"
+
 #include "src/AFMotor/AFMotor.h"
 
 #include <Arduino.h>
@@ -63,5 +65,4 @@ void calibration_setup()
     stop_motors();
 }
 
-// 한 번 하고 멈춘다. 다시 하려면 리셋
 void calibration_loop() {}
